@@ -4,6 +4,8 @@ import Persist
 import ComposableArchitecture
 import GitHubCopilotService
 import Combine
+import HostAppActivator
+import SharedUIComponents
 import ConversationServiceProvider
 
 public let SELECTED_LLM_KEY = "selectedLLM"
@@ -26,6 +28,13 @@ extension AppState {
         if let savedModel = get(key: SELECTED_LLM_KEY),
            let modelName = savedModel["modelName"]?.stringValue {
             return modelName
+        }
+        return nil
+    }
+    
+    func isSelectedModelSupportVision() -> Bool? {
+        if let savedModel = get(key: SELECTED_LLM_KEY) {
+           return savedModel["supportVision"]?.boolValue
         }
         return nil
     }
@@ -104,7 +113,8 @@ class CopilotModelManagerObservable: ObservableObject {
                         .init(
                             modelName: fallbackModel.modelName,
                             modelFamily: fallbackModel.id,
-                            billing: fallbackModel.billing
+                            billing: fallbackModel.billing,
+                            supportVision: fallbackModel.capabilities.supports.vision
                         )
                     )
                 }
@@ -122,7 +132,8 @@ extension CopilotModelManager {
             return LLMModel(
                 modelName: $0.modelName,
                 modelFamily: $0.isChatFallback ? $0.id : $0.modelFamily,
-                billing: $0.billing
+                billing: $0.billing,
+                supportVision: $0.capabilities.supports.vision
             )
         }
     }
@@ -136,7 +147,8 @@ extension CopilotModelManager {
             return LLMModel(
                 modelName: defaultModel.modelName,
                 modelFamily: defaultModel.modelFamily,
-                billing: defaultModel.billing
+                billing: defaultModel.billing,
+                supportVision: defaultModel.capabilities.supports.vision
             )
         }
 
@@ -146,7 +158,8 @@ extension CopilotModelManager {
             return LLMModel(
                 modelName: gpt4_1.modelName,
                 modelFamily: gpt4_1.modelFamily,
-                billing: gpt4_1.billing
+                billing: gpt4_1.billing,
+                supportVision: gpt4_1.capabilities.supports.vision
             )
         }
 
@@ -155,7 +168,8 @@ extension CopilotModelManager {
             return LLMModel(
                 modelName: firstModel.modelName,
                 modelFamily: firstModel.modelFamily,
-                billing: firstModel.billing
+                billing: firstModel.billing,
+                supportVision: firstModel.capabilities.supports.vision
             )
         }
 
@@ -167,6 +181,7 @@ struct LLMModel: Codable, Hashable {
     let modelName: String
     let modelFamily: String
     let billing: CopilotModelBilling?
+    let supportVision: Bool
 }
 
 struct ScopeCache {
@@ -355,6 +370,23 @@ struct ModelPicker: View {
         }
     }
     
+    private var mcpButton: some View {
+        Button(action: {
+            try? launchHostAppMCPSettings()
+        }) {
+            Image(systemName: "wrench.and.screwdriver")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+                .padding(4)
+                .foregroundColor(.primary.opacity(0.85))
+                .font(Font.system(size: 11, weight: .semibold))
+        }
+        .buttonStyle(HoverButtonStyle(padding: 0))
+        .help("Configure your MCP server")
+        .cornerRadius(6)
+    }
+    
     // Main view body
     var body: some View {
         WithPerceptionTracking {
@@ -365,6 +397,10 @@ struct ModelPicker: View {
                         updateAgentPicker()
                     }
                 
+                if chatMode == "Agent" {
+                    mcpButton
+                }
+
                 // Model Picker
                 Group {
                     if !models.isEmpty && !selectedModel.isEmpty {

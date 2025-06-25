@@ -22,7 +22,7 @@ public struct Reference: Codable, Equatable, Hashable {
 
 struct ConversationCreateParams: Codable {
     var workDoneToken: String
-    var turns: [ConversationTurn]
+    var turns: [TurnSchema]
     var capabilities: Capabilities
     var textDocument: Doc?
     var references: [Reference]?
@@ -122,18 +122,11 @@ struct ConversationRatingParams: Codable {
 }
 
 // MARK: Conversation turn
-
-struct ConversationTurn: Codable {
-    var request: String
-    var response: String?
-    var turnId: String?
-}
-
 struct TurnCreateParams: Codable {
     var workDoneToken: String
     var conversationId: String
     var turnId: String?
-    var message: String
+    var message: MessageContent
     var textDocument: Doc?
     var ignoredSkills: [String]?
     var references: [Reference]?

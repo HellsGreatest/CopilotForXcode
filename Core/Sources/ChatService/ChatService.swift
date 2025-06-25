@@ -18,7 +18,7 @@ import SystemUtils
 
 public protocol ChatServiceType {
     var memory: ContextAwareAutoManagedChatMemory { get set }
-    func send(_ id: String, content: String, skillSet: [ConversationSkill], references: [FileReference], model: String?, agentMode: Bool, userLanguage: String?, turnId: String?) async throws
+    func send(_ id: String, content: String, contentImages: [ChatCompletionContentPartImage], contentImageReferences: [ImageReference], skillSet: [ConversationSkill], references: [FileReference], model: String?, agentMode: Bool, userLanguage: String?, turnId: String?) async throws
     func stopReceivingMessage() async
     func upvote(_ id: String, _ rating: ConversationRating) async
     func downvote(_ id: String, _ rating: ConversationRating) async
@@ -316,10 +316,23 @@ public final class ChatService: ChatServiceType, ObservableObject {
             }
         }
     }
+    
+    public enum ChatServiceError: Error, LocalizedError {
+        case conflictingImageFormats(String)
+        
+        public var errorDescription: String? {
+            switch self {
+            case .conflictingImageFormats(let message):
+                return message
+            }
+        }
+    }
 
     public func send(
         _ id: String,
         content: String,
+        contentImages: Array<ChatCompletionContentPartImage> = [],
+        contentImageReferences: Array<ImageReference> = [],
         skillSet: Array<ConversationSkill>,
         references: Array<FileReference>,
         model: String? = nil,
@@ -331,11 +344,31 @@ public final class ChatService: ChatServiceType, ObservableObject {
         let workDoneToken = UUID().uuidString
         activeRequestId = workDoneToken
         
+        let finalImageReferences: [ImageReference]
+        let finalContentImages: [ChatCompletionContentPartImage]
+        
+        if !contentImageReferences.isEmpty {
+            // User attached images are all parsed as ImageReference
+            finalImageReferences = contentImageReferences
+            finalContentImages = contentImageReferences
+                .map {
+                    ChatCompletionContentPartImage(
+                        url: $0.dataURL(imageType: $0.source == .screenshot ? "png" : "")
+                    )
+                }
+        } else {
+            // In current implementation, only resend message will have contentImageReferences
+            // No need to convert ChatCompletionContentPartImage to ImageReference for persistence
+            finalImageReferences = []
+            finalContentImages = contentImages
+        }
+        
         var chatMessage = ChatMessage(
             id: id,
             chatTabID: self.chatTabInfo.id,
             role: .user,
             content: content,
+            contentImageReferences: finalImageReferences,
             references: references.toConversationReferences()
         )
         
@@ -406,6 +439,7 @@ public final class ChatService: ChatServiceType, ObservableObject {
         let request = createConversationRequest(
             workDoneToken: workDoneToken,
             content: content,
+            contentImages: finalContentImages,
             activeDoc: activeDoc,
             references: references,
             model: model,
@@ -417,12 +451,13 @@ public final class ChatService: ChatServiceType, ObservableObject {
         
         self.lastUserRequest = request
         self.skillSet = validSkillSet
-        try await send(request)
+        try await sendConversationRequest(request)
     }
     
     private func createConversationRequest(
         workDoneToken: String, 
         content: String,
+        contentImages: [ChatCompletionContentPartImage] = [],
         activeDoc: Doc?,
         references: [FileReference],
         model: String? = nil,
@@ -443,6 +478,7 @@ public final class ChatService: ChatServiceType, ObservableObject {
         return ConversationRequest(
             workDoneToken: workDoneToken,
             content: newContent,
+            contentImages: contentImages,
             workspaceFolder: "",
             activeDoc: activeDoc,
             skills: skillCapabilities,
@@ -504,6 +540,7 @@ public final class ChatService: ChatServiceType, ObservableObject {
             try await send(
                 id,
                 content: lastUserRequest.content,
+                contentImages: lastUserRequest.contentImages,
                 skillSet: skillSet,
                 references: lastUserRequest.references ?? [],
                 model: model != nil ? model : lastUserRequest.model,
@@ -720,12 +757,14 @@ public final class ChatService: ChatServiceType, ObservableObject {
                     await Status.shared
                         .updateCLSStatus(.warning, busy: false, message: CLSError.message)
                     let errorMessage = buildErrorMessage(
-                        turnId: progress.turnId, 
+                        turnId: progress.turnId,  
                         panelMessages: [.init(type: .error, title: String(CLSError.code ?? 0), message: CLSError.message, location: .Panel)])
                     // will persist in resetongoingRequest()
                     await memory.appendMessage(errorMessage)
                     
-                    if let lastUserRequest {
+                    if let lastUserRequest,
+                       let currentUserPlan = await Status.shared.currentUserPlan(),
+                       currentUserPlan != "free" {
                         guard let fallbackModel = CopilotModelManager.getFallbackLLM(
                             scope: lastUserRequest.agentMode ? .agentPanel : .chatPanel
                         ) else {
@@ -852,7 +891,7 @@ public final class ChatService: ChatServiceType, ObservableObject {
         }
     }
     
-    private func send(_ request: ConversationRequest) async throws {
+    private func sendConversationRequest(_ request: ConversationRequest) async throws {
         guard !isReceivingMessage else { throw CancellationError() }
         isReceivingMessage = true
         
@@ -892,7 +931,7 @@ public final class ChatService: ChatServiceType, ObservableObject {
         
         switch fileEdit.toolName {
         case .insertEditIntoFile:
-            try InsertEditIntoFileTool.applyEdit(for: fileURL, content: fileEdit.originalContent, contextProvider: self)
+            InsertEditIntoFileTool.applyEdit(for: fileURL, content: fileEdit.originalContent, contextProvider: self)
         case .createFile:
             try CreateFileTool.undo(for: fileURL)
         default:

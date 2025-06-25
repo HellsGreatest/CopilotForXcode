@@ -11,11 +11,10 @@ import SwiftUIFlowLayout
 import XcodeInspector
 import ChatTab
 import Workspace
-import HostAppActivator
 import Persist
 import UniformTypeIdentifiers
 
-private let r: Double = 8
+private let r: Double = 4
 
 public struct ChatPanel: View {
     @Perception.Bindable var chat: StoreOf<Chat>
@@ -78,14 +77,17 @@ public struct ChatPanel: View {
                         return nil
                     }()
                     
-                    guard let url, 
-                          let isValidFile = try? WorkspaceFile.isValidFile(url), 
-                          isValidFile 
-                    else { return }
-                    
-                    DispatchQueue.main.async {
-                        let fileReference = FileReference(url: url, isCurrentEditor: false)
-                        chat.send(.addSelectedFile(fileReference))
+                    guard let url else { return }
+                    if let isValidFile = try? WorkspaceFile.isValidFile(url), isValidFile {
+                        DispatchQueue.main.async {
+                            let fileReference = FileReference(url: url, isCurrentEditor: false)
+                            chat.send(.addSelectedFile(fileReference))
+                        }
+                    } else if let data = try? Data(contentsOf: url),
+                        ["png", "jpeg", "jpg", "bmp", "gif", "tiff", "tif", "webp"].contains(url.pathExtension.lowercased()) {
+                        DispatchQueue.main.async {
+                            chat.send(.addSelectedImage(ImageReference(data: data, fileUrl: url)))
+                        }
                     }
                 }
             }
@@ -94,6 +96,8 @@ public struct ChatPanel: View {
         return true
     }
 }
+
+
 
 private struct ScrollViewOffsetPreferenceKey: PreferenceKey {
     static var defaultValue = CGFloat.zero
@@ -365,7 +369,12 @@ struct ChatHistoryItem: View {
             let text = message.text
             switch message.role {
             case .user:
-                UserMessage(id: message.id, text: text, chat: chat)
+                UserMessage(
+                    id: message.id,
+                    text: text,
+                    imageReferences: message.imageReferences,
+                    chat: chat
+                )
             case .assistant:
                 BotMessage(
                     id: message.id,
@@ -523,6 +532,10 @@ struct ChatPanelInputArea: View {
                         }
                     }
                     
+                    if !chat.state.attachedImages.isEmpty {
+                        ImagesScrollView(chat: chat)
+                    }
+                    
                     ZStack(alignment: .topLeading) {
                         if chat.typedMessage.isEmpty {
                             Group {
@@ -669,10 +682,10 @@ struct ChatPanelInputArea: View {
             }
         }
         
-        enum ChatContextButtonType { case mcpConfig, contextAttach}
+        enum ChatContextButtonType { case imageAttach, contextAttach}
         
         private var chatContextView: some View {
-            let buttonItems: [ChatContextButtonType] = chat.isAgentMode ? [.mcpConfig, .contextAttach] : [.contextAttach]
+            let buttonItems: [ChatContextButtonType] = [.contextAttach, .imageAttach]
             let currentEditorItem: [FileReference] = [chat.state.currentEditor].compactMap {
                 $0
             }
@@ -682,25 +695,8 @@ struct ChatPanelInputArea: View {
             } + currentEditorItem + selectedFileItems
             return FlowLayout(mode: .scrollable, items: chatContextItems, itemSpacing: 4) { item in
                 if let buttonType = item as? ChatContextButtonType {
-                    if buttonType == .mcpConfig {
-                        // MCP Settings button
-                        Button(action: {
-                            try? launchHostAppMCPSettings()
-                        }) {
-                            Image(systemName: "wrench.and.screwdriver")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 16, height: 16)
-                                .foregroundColor(.primary.opacity(0.85))
-                                .padding(4)
-                        }
-                        .buttonStyle(HoverButtonStyle(padding: 0))
-                        .help("Configure your MCP server")
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: r)
-                                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                        )
+                    if buttonType == .imageAttach {
+                        VisionMenuView(chat: chat)
                     } else if buttonType == .contextAttach {
                         // File picker button
                         Button(action: {
@@ -711,25 +707,17 @@ struct ChatPanelInputArea: View {
                                 }
                             }
                         }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "paperclip")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 16, height: 16)
-                                    .foregroundColor(.primary.opacity(0.85))
-                                Text("Add Context...")
-                                    .foregroundColor(.primary.opacity(0.85))
-                                    .lineLimit(1)
-                            }
-                            .padding(4)
+                            Image(systemName: "paperclip")
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 16, height: 16)
+                                .padding(4)
+                                .foregroundColor(.primary.opacity(0.85))
+                                .font(Font.system(size: 11, weight: .semibold))
                         }
                         .buttonStyle(HoverButtonStyle(padding: 0))
                         .help("Add Context")
                         .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: r)
-                                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                        )
                     }
                 } else if let select = item as? FileReference {
                     HStack(spacing: 0) {
@@ -739,6 +727,7 @@ struct ChatPanelInputArea: View {
                             .frame(width: 16, height: 16)
                             .foregroundColor(.primary.opacity(0.85))
                             .padding(4)
+                            .opacity(select.isCurrentEditor && !isCurrentEditorContextEnabled ? 0.4 : 1.0)
 
                         Text(select.url.lastPathComponent)
                             .lineLimit(1)
@@ -748,66 +737,36 @@ struct ChatPanelInputArea: View {
                                 ? .secondary
                                 : .primary.opacity(0.85)
                             )
-                            .font(select.isCurrentEditor && !isCurrentEditorContextEnabled
-                                  ? .body.italic()
-                                  : .body
-                            )
+                            .font(.body)
+                            .opacity(select.isCurrentEditor && !isCurrentEditorContextEnabled ? 0.4 : 1.0)
                             .help(select.getPathRelativeToHome())
                         
                         if select.isCurrentEditor {
-                            Text("Current file")
-                                .foregroundStyle(.secondary)
-                                .font(select.isCurrentEditor && !isCurrentEditorContextEnabled
-                                      ? .callout.italic()
-                                      : .callout
-                                )
-                                .padding(.leading, 4)
-                        }
-
-                        Button(action: {
-                            if select.isCurrentEditor {
-                                enableCurrentEditorContext.toggle()
-                                isCurrentEditorContextEnabled = enableCurrentEditorContext
-                            } else {
-                                chat.send(.removeSelectedFile(select))
-                            }
-                        }) {
-                            if select.isCurrentEditor {
-                                if isCurrentEditorContextEnabled {
-                                    Image("Eye")
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 16, height: 16)
-                                        .foregroundColor(.secondary)
-                                        .help("Disable current file context")
-                                } else {
-                                    Image("EyeClosed")
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 16, height: 16)
-                                        .foregroundColor(.secondary)
-                                        .help("Enable current file context")
+                            Toggle("", isOn: $isCurrentEditorContextEnabled)
+                                .toggleStyle(SwitchToggleStyle(tint: .blue))
+                                .controlSize(.mini)
+                                .padding(.trailing, 4)
+                                .onChange(of: isCurrentEditorContextEnabled) { newValue in
+                                    enableCurrentEditorContext = newValue
                                 }
-                            } else {
+                        } else {
+                            Button(action: { chat.send(.removeSelectedFile(select)) }) {
                                 Image(systemName: "xmark")
                                     .resizable()
                                     .frame(width: 8, height: 8)
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(.primary.opacity(0.85))
                                     .padding(4)
                             }
+                            .buttonStyle(HoverButtonStyle())
                         }
-                        .buttonStyle(HoverButtonStyle())
                     }
-                    .cornerRadius(6)
+                    .background(
+                        Color(nsColor: .windowBackgroundColor).opacity(0.5)
+                    )
+                    .cornerRadius(select.isCurrentEditor ? 99 : r)
                     .overlay(
-                        RoundedRectangle(cornerRadius: r)
-                            .stroke(
-                                Color(nsColor: .separatorColor),
-                                style: .init(
-                                    lineWidth: 1,
-                                    dash: select.isCurrentEditor && !isCurrentEditorContextEnabled ? [4, 2] : []
-                                )
-                            )
+                        RoundedRectangle(cornerRadius: select.isCurrentEditor ? 99 : r)
+                            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
                     )
                 }
             }

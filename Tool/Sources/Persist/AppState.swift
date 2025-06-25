@@ -18,6 +18,13 @@ public extension JSONValue {
         }
         return nil
     }
+    
+    var boolValue: Bool? {
+        if case .bool(let value) = self {
+            return value
+        }
+        return nil
+    }
 
     static func convertToJSONValue<T: Codable>(_ object: T) -> JSONValue? {
         do {

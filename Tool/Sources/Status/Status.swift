@@ -32,6 +32,8 @@ public extension Notification.Name {
 }
 
 private var currentUserName: String? = nil
+private var currentUserCopilotPlan: String? = nil
+
 public final actor Status {
     public static let shared = Status()
 
@@ -53,9 +55,14 @@ public final actor Status {
         return currentUserName
     }
     
+    public func currentUserPlan() -> String? {
+        return currentUserCopilotPlan
+    }
+
     public func updateQuotaInfo(_ quotaInfo: GitHubCopilotQuotaInfo?) {
         guard quotaInfo != currentUserQuotaInfo else { return }
         currentUserQuotaInfo = quotaInfo
+        currentUserCopilotPlan = quotaInfo?.copilotPlan
         broadcast()
     }
 

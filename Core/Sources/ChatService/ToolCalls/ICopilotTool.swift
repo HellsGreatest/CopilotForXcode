@@ -2,6 +2,10 @@ import ConversationServiceProvider
 import JSONRPC
 import ChatTab
 
+enum ToolInvocationStatus: String {
+    case success, error, cancelled
+}
+
 public protocol ToolContextProvider {
     // MARK: insert_edit_into_file
     var chatTabInfo: ChatTabInfo { get }
@@ -34,16 +38,21 @@ extension ICopilotTool {
      * Completes a tool response.
      * - Parameters:
      *   - request: The original tool invocation request.
+     *   - status: The completion status of the tool execution (success, error, or cancelled).
      *   - response: The string value to include in the response content.
      *   - completion: The completion handler to call with the response.
      */
     func completeResponse(
         _ request: InvokeClientToolRequest,
+        status: ToolInvocationStatus = .success,
         response: String = "",
         completion: @escaping (AnyJSONRPCResponse) -> Void
     ) {
         let result: JSONValue = .array([
-            .hash(["content": .array([.hash(["value": .string(response)])])]),
+            .hash([
+                "status": .string(status.rawValue),
+                "content": .array([.hash(["value": .string(response)])])
+            ]),
             .null
         ])
         completion(AnyJSONRPCResponse(id: request.id, result: result))

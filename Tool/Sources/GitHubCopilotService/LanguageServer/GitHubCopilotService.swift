@@ -53,7 +53,7 @@ public protocol GitHubCopilotTelemetryServiceType {
 }
 
 public protocol GitHubCopilotConversationServiceType {
-    func createConversation(_ message: String,
+    func createConversation(_ message: MessageContent,
                             workDoneToken: String,
                             workspaceFolder: String,
                             workspaceFolders: [WorkspaceFolder]?,
@@ -65,7 +65,7 @@ public protocol GitHubCopilotConversationServiceType {
                             turns: [TurnSchema],
                             agentMode: Bool,
                             userLanguage: String?) async throws
-    func createTurn(_ message: String,
+    func createTurn(_ message: MessageContent,
                     workDoneToken: String,
                     conversationId: String,
                     turnId: String?,
@@ -580,7 +580,7 @@ public final class GitHubCopilotService:
     }
 
     @GitHubCopilotSuggestionActor
-    public func createConversation(_ message: String,
+    public func createConversation(_ message: MessageContent,
                                    workDoneToken: String,
                                    workspaceFolder: String,
                                    workspaceFolders: [WorkspaceFolder]? = nil,
@@ -592,16 +592,21 @@ public final class GitHubCopilotService:
                                    turns: [TurnSchema],
                                    agentMode: Bool,
                                    userLanguage: String?) async throws {
-        var conversationCreateTurns: [ConversationTurn] = []
+        var conversationCreateTurns: [TurnSchema] = []
         // invoke conversation history
         if turns.count > 0 {
             conversationCreateTurns.append(
                 contentsOf: turns.map {
-                    ConversationTurn(request: $0.request, response: $0.response, turnId: $0.turnId)
+                    TurnSchema(
+                        request: $0.request,
+                        response: $0.response,
+                        agentSlug: $0.agentSlug,
+                        turnId: $0.turnId
+                    )
                 }
             )
         }
-        conversationCreateTurns.append(ConversationTurn(request: message))
+        conversationCreateTurns.append(TurnSchema(request: message))
         let params = ConversationCreateParams(workDoneToken: workDoneToken,
                                               turns: conversationCreateTurns,
                                               capabilities: ConversationCreateParams.Capabilities(
@@ -634,7 +639,7 @@ public final class GitHubCopilotService:
     }
 
     @GitHubCopilotSuggestionActor
-    public func createTurn(_ message: String,
+    public func createTurn(_ message: MessageContent,
                            workDoneToken: String,
                            conversationId: String,
                            turnId: String?,

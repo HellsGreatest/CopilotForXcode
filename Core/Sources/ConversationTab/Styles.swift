@@ -35,6 +35,7 @@ extension NSAppearance {
 
 extension View {
     var messageBubbleCornerRadius: Double { 8 }
+    var hoverableImageCornerRadius: Double { 4 }
 
     func codeBlockLabelStyle() -> some View {
         relativeLineSpacing(.em(0.225))

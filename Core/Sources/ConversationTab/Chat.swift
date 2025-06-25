@@ -21,6 +21,7 @@ public struct DisplayedChatMessage: Equatable {
     public var id: String
     public var role: Role
     public var text: String
+    public var imageReferences: [ImageReference] = []
     public var references: [ConversationReference] = []
     public var followUp: ConversationFollowUp? = nil
     public var suggestedTitle: String? = nil
@@ -33,6 +34,7 @@ public struct DisplayedChatMessage: Equatable {
         id: String,
         role: Role,
         text: String,
+        imageReferences: [ImageReference] = [],
         references: [ConversationReference] = [],
         followUp: ConversationFollowUp? = nil,
         suggestedTitle: String? = nil,
@@ -44,6 +46,7 @@ public struct DisplayedChatMessage: Equatable {
         self.id = id
         self.role = role
         self.text = text
+        self.imageReferences = imageReferences
         self.references = references
         self.followUp = followUp
         self.suggestedTitle = suggestedTitle
@@ -74,6 +77,7 @@ struct Chat {
         var focusedField: Field?
         var currentEditor: FileReference? = nil
         var selectedFiles: [FileReference] = []
+        var attachedImages: [ImageReference] = []
         /// Cache the original content
         var fileEditMap: OrderedDictionary<URL, FileEdit> = [:]
         var diffViewerController: DiffViewWindowController? = nil
@@ -118,11 +122,15 @@ struct Chat {
 
         case chatMenu(ChatMenu.Action)
         
-        // context
+        // File context
         case addSelectedFile(FileReference)
         case removeSelectedFile(FileReference)
         case resetCurrentEditor
         case setCurrentEditor(FileReference)
+        
+        // Image context
+        case addSelectedImage(ImageReference)
+        case removeSelectedImage(ImageReference)
         
         case followUpButtonClicked(String, String)
         
@@ -192,8 +200,22 @@ struct Chat {
                 let selectedFiles = state.selectedFiles
                 let selectedModelFamily = AppState.shared.getSelectedModelFamily() ?? CopilotModelManager.getDefaultChatModel(scope: AppState.shared.modelScope())?.modelFamily
                 let agentMode = AppState.shared.isAgentModeEnabled()
+                
+                let shouldAttachImages = AppState.shared.isSelectedModelSupportVision() ?? CopilotModelManager.getDefaultChatModel(scope: AppState.shared.modelScope())?.supportVision ?? false
+                let attachedImages: [ImageReference] = shouldAttachImages ? state.attachedImages : []
+                state.attachedImages = []
                 return .run { _ in
-                    try await service.send(id, content: message, skillSet: skillSet, references: selectedFiles, model: selectedModelFamily, agentMode: agentMode, userLanguage: chatResponseLocale)
+                    try await service
+                        .send(
+                            id,
+                            content: message,
+                            contentImageReferences: attachedImages,
+                            skillSet: skillSet,
+                            references: selectedFiles,
+                            model: selectedModelFamily,
+                            agentMode: agentMode,
+                            userLanguage: chatResponseLocale
+                        )
                 }.cancellable(id: CancelID.sendMessage(self.id))
             
             case let .toolCallAccepted(toolCallId):
@@ -362,6 +384,7 @@ struct Chat {
                             }
                         }(),
                         text: message.content,
+                        imageReferences: message.contentImageReferences,
                         references: message.references.map {
                             .init(
                                 uri: $0.uri,
@@ -444,6 +467,7 @@ struct Chat {
                  ChatInjector().insertCodeBlock(codeBlock: code)
                  return .none
 
+            // MARK: - File Context
             case let .addSelectedFile(fileReference):
                 guard !state.selectedFiles.contains(fileReference) else { return .none }
                 state.selectedFiles.append(fileReference)
@@ -457,6 +481,16 @@ struct Chat {
                 return .none
             case let .setCurrentEditor(fileReference):
                 state.currentEditor = fileReference
+                return .none
+                
+            // MARK: - Image Context
+            case let .addSelectedImage(imageReference):
+                guard !state.attachedImages.contains(imageReference) else { return .none }
+                state.attachedImages.append(imageReference)
+                return .none
+            case let .removeSelectedImage(imageReference):
+                guard let index = state.attachedImages.firstIndex(of: imageReference) else { return .none }
+                state.attachedImages.remove(at: index)
                 return .none
                 
             // MARK: - Agent Edits

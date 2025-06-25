@@ -77,6 +77,9 @@ public struct ChatMessage: Equatable, Codable {
 
     /// The content of the message, either the chat message, or a result of a function call.
     public var content: String
+    
+    /// The attached image content of the message
+    public var contentImageReferences: [ImageReference]
 
     /// The id of the message.
     public var id: ID
@@ -118,6 +121,7 @@ public struct ChatMessage: Equatable, Codable {
         clsTurnID: String? = nil,
         role: Role,
         content: String,
+        contentImageReferences: [ImageReference] = [],
         references: [ConversationReference] = [],
         followUp: ConversationFollowUp? = nil,
         suggestedTitle: String? = nil,
@@ -131,6 +135,7 @@ public struct ChatMessage: Equatable, Codable {
     ) {
         self.role = role
         self.content = content
+        self.contentImageReferences = contentImageReferences
         self.id = id
         self.chatTabID = chatTabID
         self.clsTurnID = clsTurnID

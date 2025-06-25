@@ -40,7 +40,7 @@ public class AppInstanceInspector: ObservableObject {
         return runningApplication.activate(options: options)
     }
 
-    init(runningApplication: NSRunningApplication) {
+    public init(runningApplication: NSRunningApplication) {
         self.runningApplication = runningApplication
         processIdentifier = runningApplication.processIdentifier
         bundleURL = runningApplication.bundleURL

@@ -80,6 +80,9 @@ struct CopilotConnectionView: View {
                 title: "GitHub Copilot Account Settings"
             )
         }
+        .onReceive(DistributedNotificationCenter.default().publisher(for: .authStatusDidChange)) { _ in
+            viewModel.checkStatus()
+        }
     }
 
     var copilotResources: some View {

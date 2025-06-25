@@ -3,6 +3,7 @@ import ChatTab
 import ComposableArchitecture
 import Foundation
 import SwiftUI
+import ConversationTab
 
 final class ChatPanelWindow: NSWindow {
     override var canBecomeKey: Bool { true }

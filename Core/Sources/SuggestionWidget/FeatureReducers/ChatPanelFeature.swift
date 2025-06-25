@@ -178,7 +178,7 @@ public struct ChatPanelFeature {
         
         // Chat History
         case chatHistoryItemClicked(id: String)
-        case chatHisotryDeleteButtonClicked(id: String)
+        case chatHistoryDeleteButtonClicked(id: String)
         case chatTab(id: String, action: ChatTabItem.Action)
         
         // persist
@@ -335,7 +335,7 @@ public struct ChatPanelFeature {
                 state.chatHistory.updateHistory(currentChatWorkspace)
                 return .none
             
-            case let .chatHisotryDeleteButtonClicked(id):
+            case let .chatHistoryDeleteButtonClicked(id):
                 // the current chat should not be deleted
                 guard var currentChatWorkspace = state.currentChatWorkspace, id != currentChatWorkspace.selectedTabId else {
                     return .none

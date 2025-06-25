@@ -239,8 +239,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let notifications = DistributedNotificationCenter.default().notifications(named: .authStatusDidChange)
         Task { [weak self] in
             for await _ in notifications {
-                guard let self else { return }
-                await self.forceAuthStatusCheck()
+                guard self != nil else { return }
+                do {
+                    let service = try await GitHubCopilotViewModel.shared.getGitHubCopilotAuthService()
+                    let accountStatus = try await service.checkStatus()
+                    if accountStatus == .notSignedIn {
+                        try await GitHubCopilotService.signOutAll()
+                    }
+                } catch {
+                    Logger.service.error("Failed to watch auth status: \(error)")
+                }
             }
         }
     }

@@ -71,13 +71,184 @@ extension FileReference {
     }
 }
 
+public enum ImageReferenceSource: String, Codable {
+    case file = "file"
+    case pasted = "pasted"
+    case screenshot = "screenshot"
+}
+
+public struct ImageReference: Equatable, Codable, Hashable {
+    public var data: Data
+    public var fileUrl: URL?
+    public var source: ImageReferenceSource
+    
+    public init(data: Data, source: ImageReferenceSource) {
+        self.data = data
+        self.source = source
+    }
+    
+    public init(data: Data, fileUrl: URL) {
+        self.data = data
+        self.fileUrl = fileUrl
+        self.source = .file
+    }
+    
+    public func dataURL(imageType: String = "") -> String {
+        let base64String = data.base64EncodedString()
+        var type = imageType
+        if let url = fileUrl, imageType.isEmpty {
+            type = url.pathExtension
+        }
+            
+        let mimeType: String
+        switch type {
+        case "png":
+            mimeType = "image/png"
+        case "jpeg", "jpg":
+            mimeType = "image/jpeg"
+        case "bmp":
+            mimeType = "image/bmp"
+        case "gif":
+            mimeType = "image/gif"
+        case "webp":
+            mimeType = "image/webp"
+        case "tiff", "tif":
+            mimeType = "image/tiff"
+        default:
+            mimeType = "image/png"
+        }
+        
+        return "data:\(mimeType);base64,\(base64String)"
+    }
+}
+
+public enum MessageContentType: String, Codable {
+    case text = "text"
+    case imageUrl = "image_url"
+}
+
+public enum ImageDetail: String, Codable {
+    case low = "low"
+    case high = "high"
+}
+
+public struct ChatCompletionImageURL: Codable,Equatable {
+    let url: String
+    let detail: ImageDetail?
+    
+    public init(url: String, detail: ImageDetail? = nil) {
+        self.url = url
+        self.detail = detail
+    }
+}
+
+public struct ChatCompletionContentPartText: Codable, Equatable {
+    public let type: MessageContentType
+    public let text: String
+    
+    public init(text: String) {
+        self.type = .text
+        self.text = text
+    }
+}
+
+public struct ChatCompletionContentPartImage: Codable, Equatable {
+    public let type: MessageContentType
+    public let imageUrl: ChatCompletionImageURL
+    
+    public init(imageUrl: ChatCompletionImageURL) {
+        self.type = .imageUrl
+        self.imageUrl = imageUrl
+    }
+    
+    public init(url: String, detail: ImageDetail? = nil) {
+        self.type = .imageUrl
+        self.imageUrl = ChatCompletionImageURL(url: url, detail: detail)
+    }
+}
+
+public enum ChatCompletionContentPart: Codable, Equatable {
+    case text(ChatCompletionContentPartText)
+    case imageUrl(ChatCompletionContentPartImage)
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(MessageContentType.self, forKey: .type)
+        
+        switch type {
+        case .text:
+            self = .text(try ChatCompletionContentPartText(from: decoder))
+        case .imageUrl:
+            self = .imageUrl(try ChatCompletionContentPartImage(from: decoder))
+        }
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        switch self {
+        case .text(let content):
+            try content.encode(to: encoder)
+        case .imageUrl(let content):
+            try content.encode(to: encoder)
+        }
+    }
+}
+
+public enum MessageContent: Codable, Equatable {
+    case string(String)
+    case messageContentArray([ChatCompletionContentPart])
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let stringValue = try? container.decode(String.self) {
+            self = .string(stringValue)
+        } else if let arrayValue = try? container.decode([ChatCompletionContentPart].self) {
+            self = .messageContentArray(arrayValue)
+        } else {
+            throw DecodingError.typeMismatch(MessageContent.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Expected String or Array of MessageContent"))
+        }
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value):
+            try container.encode(value)
+        case .messageContentArray(let value):
+            try container.encode(value)
+        }
+    }
+}
+
 public struct TurnSchema: Codable {
-    public var request: String
+    public var request: MessageContent
     public var response: String?
     public var agentSlug: String?
     public var turnId: String?
     
     public init(request: String, response: String? = nil, agentSlug: String? = nil, turnId: String? = nil) {
+        self.request = .string(request)
+        self.response = response
+        self.agentSlug = agentSlug
+        self.turnId = turnId
+    }
+    
+    public init(
+        request: [ChatCompletionContentPart],
+        response: String? = nil,
+        agentSlug: String? = nil,
+        turnId: String? = nil
+    ) {
+        self.request = .messageContentArray(request)
+        self.response = response
+        self.agentSlug = agentSlug
+        self.turnId = turnId
+    }
+    
+    public init(request: MessageContent, response: String? = nil, agentSlug: String? = nil, turnId: String? = nil) {
         self.request = request
         self.response = response
         self.agentSlug = agentSlug
@@ -88,6 +259,7 @@ public struct TurnSchema: Codable {
 public struct ConversationRequest {
     public var workDoneToken: String
     public var content: String
+    public var contentImages: [ChatCompletionContentPartImage] = []
     public var workspaceFolder: String
     public var activeDoc: Doc?
     public var skills: [String]
@@ -102,6 +274,7 @@ public struct ConversationRequest {
     public init(
         workDoneToken: String,
         content: String,
+        contentImages: [ChatCompletionContentPartImage] = [],
         workspaceFolder: String,
         activeDoc: Doc? = nil,
         skills: [String],
@@ -115,6 +288,7 @@ public struct ConversationRequest {
     ) {
         self.workDoneToken = workDoneToken
         self.content = content
+        self.contentImages = contentImages
         self.workspaceFolder = workspaceFolder
         self.activeDoc = activeDoc
         self.skills = skills

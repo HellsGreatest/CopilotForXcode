@@ -63,6 +63,7 @@ let package = Package(
         .library(name: "Cache", targets: ["Cache"]),
         .library(name: "StatusBarItemView", targets: ["StatusBarItemView"]),
         .library(name: "HostAppActivator", targets: ["HostAppActivator"]),
+        .library(name: "AppKitExtension", targets: ["AppKitExtension"])
     ],
     dependencies: [
         // TODO: Update LanguageClient some day.
@@ -105,10 +106,10 @@ let package = Package(
 
         .target(
             name: "Toast",
-            dependencies: [.product(
-                name: "ComposableArchitecture",
-                package: "swift-composable-architecture"
-            )]
+            dependencies: [
+                "AppKitExtension",
+                .product(name: "ComposableArchitecture", package: "swift-composable-architecture")
+            ]
         ),
 
         .target(name: "DebounceFunction"),
@@ -352,6 +353,10 @@ let package = Package(
             dependencies: ["Logger"]
         ),
         .testTarget(name: "SystemUtilsTests", dependencies: ["SystemUtils"]),
+        
+        // MARK: - AppKitExtension
+        
+        .target(name: "AppKitExtension")
     ]
 )
 

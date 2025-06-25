@@ -7,11 +7,14 @@ import SwiftUI
 import Status
 import Cache
 import ChatTab
+import ConversationServiceProvider
+import SwiftUIFlowLayout
 
 struct UserMessage: View {
     var r: Double { messageBubbleCornerRadius }
     let id: String
     let text: String
+    let imageReferences: [ImageReference]
     let chat: StoreOf<Chat>
     @Environment(\.colorScheme) var colorScheme
     @ObservedObject private var statusObserver = StatusObserver.shared
@@ -49,6 +52,12 @@ struct UserMessage: View {
                 
                 ThemedMarkdownText(text: text, chat: chat)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                
+                if !imageReferences.isEmpty {
+                    FlowLayout(mode: .scrollable, items: imageReferences, itemSpacing: 4) { item in
+                        ImageReferenceItemView(item: item)
+                    }
+                }
             }
         }
         .shadow(color: .black.opacity(0.05), radius: 6)
@@ -73,6 +82,7 @@ struct UserMessage_Previews: PreviewProvider {
             - (void)bar {}
             ```
             """#,
+            imageReferences: [],
             chat: .init(
                 initialState: .init(history: [] as [DisplayedChatMessage], isReceivingMessage: false),
                 reducer: { Chat(service: ChatService.service(for: chatTabInfo)) }

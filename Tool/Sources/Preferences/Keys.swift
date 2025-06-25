@@ -116,6 +116,11 @@ public struct UserDefaultPreferenceKeys {
         defaultValue: false,
         key: "ExtensionPermissionShown"
     )
+    
+    public let capturePermissionShown = PreferenceKey(
+        defaultValue: false,
+        key: "CapturePermissionShown"
+    )
 }
 
 // MARK: - Prompt to Code

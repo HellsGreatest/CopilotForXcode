@@ -195,16 +195,18 @@ struct ChatHistoryItemView: View {
                     Spacer()
                     
                     if !isTabSelected() {
-                        if isHovered {
-                            Button(action: {
-                                store.send(.chatHisotryDeleteButtonClicked(id: previewInfo.id))
+                        Button(action: {
+                            Task { @MainActor in
+                                await store.send(.chatHistoryDeleteButtonClicked(id: previewInfo.id)).finish()
                                 onDelete()
-                            }) {
-                                Image(systemName: "trash")
                             }
-                            .buttonStyle(HoverButtonStyle())
-                            .help("Delete")
+                        }) {
+                            Image(systemName: "trash")
+                                .opacity(isHovered ? 1 : 0)
                         }
+                        .buttonStyle(HoverButtonStyle())
+                        .help("Delete")
+                        .allowsHitTesting(isHovered)
                     }
                 }
                 .padding(.horizontal, 12)
